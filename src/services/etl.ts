@@ -2,15 +2,20 @@ import { supabase } from '../lib/supabase';
 import { RawLinkedInProfile, ETLRun, ProfileChange } from '../types/linkedin';
 import { ProfileValidator } from './validation';
 import { HashService } from './hash';
+import { auth } from '../lib/auth';
 
 export class ETLService {
   private validator = new ProfileValidator();
   private hashService = new HashService();
 
   async startETLRun(runType: 'full' | 'incremental'): Promise<string> {
+    const user = await auth.getCurrentUser();
+    if (!user) throw new Error('Not authenticated');
+
     const { data, error } = await supabase
       .from('etl_runs')
       .insert({
+        user_id: user.id,
         run_type: runType,
         status: 'running',
         started_at: new Date().toISOString(),
@@ -90,10 +95,14 @@ export class ETLService {
     };
 
     if (!existingProfile) {
+      const user = await auth.getCurrentUser();
+      if (!user) throw new Error('Not authenticated');
+
       const { data: newProfile, error } = await supabase
         .from('linkedin_profiles')
         .insert({
           ...profileData,
+          user_id: user.id,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
@@ -206,6 +215,9 @@ export class ETLService {
     imageType: 'profile_photo' | 'banner',
     imageUrl: string
   ): Promise<void> {
+    const user = await auth.getCurrentUser();
+    if (!user) throw new Error('Not authenticated');
+
     const imageHash = await this.hashService.generateImageHash(imageUrl);
 
     const { data: existingImage } = await supabase
